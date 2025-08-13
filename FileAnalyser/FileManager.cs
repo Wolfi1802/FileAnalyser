@@ -5,53 +5,21 @@ namespace FileAnalyser
 {
     internal class FileManager
     {
-        #region Funktioniert
+        /// <summary>
+        /// Value for current Analyse State
+        /// </summary>
+        public Action<double> NotifyPercentValue;
 
-        //public async Task GetAllFiles(Action<string> notifyProgressReference)
-        //{
+        /// <summary>
+        /// String to be show
+        /// </summary>
+        public Action<string> NotifyProgress;
 
-        //    DriveInfo[] allDrives = DriveInfo.GetDrives();
-        //    Stopwatch stopwatch = Stopwatch.StartNew();
+        private long usedSpace = 0;
+        private long checkedSpace = 0;
 
-        //    foreach (DriveInfo drive in allDrives)
-        //    {
-        //        notifyProgressReference($"Checking drive: [{drive.Name}]");
 
-        //        if (!drive.IsReady) continue;
-
-        //        var options = new EnumerationOptions
-        //        {
-        //            IgnoreInaccessible = true,
-        //            RecurseSubdirectories = true
-        //        };
-
-        //        try
-        //        {
-        //            foreach (string file in Directory.EnumerateFiles(drive.RootDirectory.FullName, "*.*", options))
-        //            {
-        //                Debug.WriteLine(file);
-        //            }
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            Debug.WriteLine($"❌ Fehler bei {drive.Name}: {ex.Message}");
-        //        }
-        //    }
-
-        //    stopwatch.Stop();
-
-        //    notifyProgressReference($"Done - [{stopwatch.Elapsed.TotalMilliseconds}] MS");
-        //}
-
-        //public string GetMBSpace(long space)
-        //{
-        //    long freeMB = space / (1024 * 1024);
-        //    return $"{freeMB} MB";
-        //}
-
-        #endregion
-
-        public async Task<List<FileInfo>> GetAllFiles(Action<string> notifyProgressReference)
+        public async Task<List<FileInfo>> GetAllFiles()
         {
 
             DriveInfo[] allDrives = DriveInfo.GetDrives();
@@ -59,6 +27,8 @@ namespace FileAnalyser
             List<FileInfo> allFiles = new();
 
             List<Task> tasks = new();
+            this.usedSpace = 0;
+            this.checkedSpace = 0;
 
             foreach (DriveInfo drive in DriveInfo.GetDrives())
             {
@@ -66,6 +36,7 @@ namespace FileAnalyser
                 {
                     tasks.Add(Task.Run(async () =>
                     {
+                        this.usedSpace += drive.TotalSize - drive.TotalFreeSpace;
                         allFiles.AddRange(await this.SearchDriveAsync(drive.RootDirectory.FullName));
                     }));
                 }
@@ -75,7 +46,7 @@ namespace FileAnalyser
 
             stopwatch.Stop();
 
-            notifyProgressReference($"Done - [{allFiles.Count}] - [{stopwatch.Elapsed.TotalSeconds}] seconds");
+            this.NotifyProgress($"Done - [{allFiles.Count}] ([{this.checkedSpace}] / [{this.usedSpace}]) - [{stopwatch.Elapsed.TotalSeconds}] seconds");
 
             return allFiles;
         }
@@ -93,7 +64,14 @@ namespace FileAnalyser
             {
                 await foreach (var file in GetFilesAsync(rootPath, options))
                 {
-                    files.Add(new FileInfo(file));
+                    var fileInfo = new FileInfo(file);
+                    this.checkedSpace += fileInfo.Length;
+                    double percentage = this.GetPercentage();
+
+                    this.NotifyProgress($"Checked {this.ConvertByteIntoMb(this.checkedSpace)} MB / {this.ConvertByteIntoMb(this.usedSpace)} MB - {percentage:F2}%");
+                    this.NotifyPercentValue(percentage);
+
+                    files.Add(fileInfo);
                 }
             }
             catch (Exception ex)
@@ -105,12 +83,28 @@ namespace FileAnalyser
 
         private async IAsyncEnumerable<string> GetFilesAsync(string path, EnumerationOptions options)
         {
-            await Task.Yield(); // Start asynchron
+            await Task.Yield(); //[TS] Start asynchron
 
             foreach (var file in Directory.EnumerateFiles(path, "*.*", options))
             {
                 yield return file;
             }
         }
+
+        #region Helper auslagern
+
+        private double ConvertByteIntoMb(long byteNumber)
+        {
+            return byteNumber / (1024 * 1024); //[TS] Convert bytes to MB
+        }
+
+        private double GetPercentage()
+        {
+            if (this.usedSpace == 0) 
+                return 0;
+            return (double)this.checkedSpace / this.usedSpace * 100;
+        }
+
+        #endregion
     }
 }
