@@ -1,5 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows;
 using System.Windows.Input;
 
 namespace FileAnalyser
@@ -22,6 +23,25 @@ namespace FileAnalyser
             get => GetProperty<bool>(nameof(ClickCommandEnabled));
         }
 
+        public Visibility ListViewVisibility
+        {
+            set => SetProperty(nameof(ListViewVisibility), value);
+            get => GetProperty<Visibility>(nameof(ListViewVisibility));
+        }
+
+        public Visibility ProgressBarVisibility
+        {
+            set => SetProperty(nameof(ProgressBarVisibility), value);
+            get => GetProperty<Visibility>(nameof(ProgressBarVisibility));
+        }
+
+        public double ProgressBarValue
+        {
+            set => SetProperty(nameof(ProgressBarValue), value);
+            get => GetProperty<double>(nameof(ProgressBarValue));
+        }
+
+
         public ICommand ClickCommand { get; }
 
         public ViewModel()
@@ -39,10 +59,26 @@ namespace FileAnalyser
         private async Task Click()
         {
             this.ClickCommandEnabled = false;
+            this.ListViewVisibility = Visibility.Hidden;
+            this.ProgressBarVisibility = Visibility.Visible;
 
             this.ChangeHomeText($"Start File Analyse");
 
-            var temp = await fileManager.GetAllFiles(this.ChangeHomeText);
+            //TODO [TS] BESSERE STELLE FINDEN
+            #region EventSetup
+
+            this.fileManager.NotifyPercentValue = (value) =>
+            {
+                this.ProgressBarValue = value;
+            };
+            this.fileManager.NotifyProgress = (text) =>
+            {
+                this.ChangeHomeText(text);
+            };
+
+            #endregion
+
+            var temp = await this.fileManager.GetAllFiles();
 
             if (temp is not null && temp.Count >= 1)
             {
@@ -55,7 +91,8 @@ namespace FileAnalyser
                 this.ChangeHomeText($"Service not available, try it later again");
 
 
-
+            this.ListViewVisibility = Visibility.Visible;
+            this.ProgressBarVisibility = Visibility.Collapsed;//[TS] shouldnt be visible or touchable after job is done
             this.ClickCommandEnabled = true;
         }
     }
